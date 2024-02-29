@@ -11,14 +11,10 @@ import (
 	"github.com/pkg/errors"
 
 	apiv1 "kusionstack.io/kusion/pkg/apis/core/v1"
-	v1 "kusionstack.io/kusion/pkg/apis/status/v1"
 	"kusionstack.io/kusion/pkg/cmd/build"
-	"kusionstack.io/kusion/pkg/cmd/build/builders"
+	engineapi "kusionstack.io/kusion/pkg/engine/api"
+	"kusionstack.io/kusion/pkg/engine/api/builders"
 	"kusionstack.io/kusion/pkg/engine/backend"
-	"kusionstack.io/kusion/pkg/engine/operation"
-	opsmodels "kusionstack.io/kusion/pkg/engine/operation/models"
-	"kusionstack.io/kusion/pkg/engine/states"
-	"kusionstack.io/kusion/pkg/log"
 	"kusionstack.io/kusion/pkg/project"
 	"kusionstack.io/kusion/pkg/util/pretty"
 )
@@ -137,11 +133,11 @@ func (o *Options) Run() error {
 	// Generate Intent
 	var sp *apiv1.Intent
 	if o.IntentFile != "" {
-		sp, err = build.IntentFromFile(o.IntentFile)
+		sp, err = engineapi.IntentFromFile(o.IntentFile)
 	} else if o.Output == jsonOutput {
-		sp, err = build.Intent(options, project, stack)
+		sp, err = engineapi.Intent(options, project, stack)
 	} else {
-		sp, err = build.IntentWithSpinner(options, project, stack)
+		sp, err = engineapi.IntentWithSpinner(options, project, stack)
 	}
 	if err != nil {
 		return err
@@ -162,11 +158,19 @@ func (o *Options) Run() error {
 		return err
 	}
 
+	// Construct sdk option
+	ao := &engineapi.APIOptions{
+		Operator:     o.Operator,
+		Cluster:      o.Arguments["cluster"],
+		IgnoreFields: o.IgnoreFields,
+	}
+
 	// Compute changes for preview
-	changes, err := Preview(o, stateStorage, sp, project, stack)
+	changes, err := engineapi.Preview(ao, stateStorage, sp, project, stack)
 	if err != nil {
 		return err
 	}
+	// REPLACE: with engineapi.Preview()
 
 	if o.Output == jsonOutput {
 		var previewChanges []byte
@@ -184,7 +188,7 @@ func (o *Options) Run() error {
 	}
 
 	// Summary preview table
-	changes.Summary(os.Stdout)
+	changes.Summary(os.Stdout, false)
 
 	// Detail detection
 	if o.Detail {
@@ -224,43 +228,43 @@ func (o *Options) Run() error {
 //	if err != nil {
 //	    return err
 //	}
-func Preview(
-	o *Options,
-	storage states.StateStorage,
-	planResources *apiv1.Intent,
-	project *apiv1.Project,
-	stack *apiv1.Stack,
-) (*opsmodels.Changes, error) {
-	log.Info("Start compute preview changes ...")
+// func Preview(
+// 	o *Options,
+// 	storage states.StateStorage,
+// 	planResources *apiv1.Intent,
+// 	project *apiv1.Project,
+// 	stack *apiv1.Stack,
+// ) (*opsmodels.Changes, error) {
+// 	log.Info("Start compute preview changes ...")
 
-	// Construct the preview operation
-	pc := &operation.PreviewOperation{
-		Operation: opsmodels.Operation{
-			OperationType: opsmodels.ApplyPreview,
-			Stack:         stack,
-			StateStorage:  storage,
-			IgnoreFields:  o.IgnoreFields,
-			ChangeOrder:   &opsmodels.ChangeOrder{StepKeys: []string{}, ChangeSteps: map[string]*opsmodels.ChangeStep{}},
-		},
-	}
+// 	// Construct the preview operation
+// 	pc := &operation.PreviewOperation{
+// 		Operation: opsmodels.Operation{
+// 			OperationType: opsmodels.ApplyPreview,
+// 			Stack:         stack,
+// 			StateStorage:  storage,
+// 			IgnoreFields:  o.IgnoreFields,
+// 			ChangeOrder:   &opsmodels.ChangeOrder{StepKeys: []string{}, ChangeSteps: map[string]*opsmodels.ChangeStep{}},
+// 		},
+// 	}
 
-	log.Info("Start call pc.Preview() ...")
+// 	log.Info("Start call pc.Preview() ...")
 
-	// parse cluster in arguments
-	cluster := o.Arguments["cluster"]
-	rsp, s := pc.Preview(&operation.PreviewRequest{
-		Request: opsmodels.Request{
-			Tenant:   "",
-			Project:  project,
-			Stack:    stack,
-			Operator: o.Operator,
-			Intent:   planResources,
-			Cluster:  cluster,
-		},
-	})
-	if v1.IsErr(s) {
-		return nil, fmt.Errorf("preview failed.\n%s", s.String())
-	}
+// 	// parse cluster in arguments
+// 	cluster := o.Arguments["cluster"]
+// 	rsp, s := pc.Preview(&operation.PreviewRequest{
+// 		Request: opsmodels.Request{
+// 			Tenant:   "",
+// 			Project:  project,
+// 			Stack:    stack,
+// 			Operator: o.Operator,
+// 			Intent:   planResources,
+// 			Cluster:  cluster,
+// 		},
+// 	})
+// 	if v1.IsErr(s) {
+// 		return nil, fmt.Errorf("preview failed.\n%s", s.String())
+// 	}
 
-	return opsmodels.NewChanges(project, stack, rsp.Order), nil
-}
+// 	return opsmodels.NewChanges(project, stack, rsp.Order), nil
+// }
